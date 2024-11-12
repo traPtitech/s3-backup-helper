@@ -39,6 +39,10 @@ var gcpProjectID string
 var gcsRegion string
 var gcsBucketNameSuffix string
 
+// Webhook設定
+var webhookId string
+var webhookSecret string
+
 // 並列ダウンロード数
 var palalellNum int64 = 5
 
@@ -57,6 +61,8 @@ func init() {
 	gcpProjectID = os.Getenv("GCP_PROJECT_ID")
 	gcsRegion = os.Getenv("GCS_REGION")
 	gcsBucketNameSuffix = os.Getenv("GCS_BUCKET_NAME_SUFFIX")
+	webhookId = os.Getenv("WEBHOOK_ID")
+	webhookSecret = os.Getenv("WEBHOOK_SECRET")
 	palalellNum, err = strconv.ParseInt(os.Getenv("PALALELL_NUM"), 10, 64)
 	if err != nil {
 		log.Fatalf("Error: Failed to convert PALALELL_NUM to int: %v", err)
@@ -227,4 +233,13 @@ func main() {
 	backupDuration := backupEndTime.Sub(backupStartTime)
 
 	fmt.Printf("Backup completed: %d objects, %d errors, %v\n", totalObjects, totalErrors, backupDuration)
+
+	// Webhook送信
+	webhookMessage := fmt.Sprintf(`### オブジェクトストレージのバックアップが保存されました
+	バックアップ開始時刻: %s
+	バックアップ所要時間: %f時間
+	オブジェクト数: %d
+	エラー数: %d
+	`, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, totalErrors)
+	postWebhook(webhookMessage, webhookId, webhookSecret)
 }

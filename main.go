@@ -117,7 +117,7 @@ func main() {
 			if err := gcsBucketClient.Create(ctx, gcpProjectID, &gcsNewBucketAttr); err != nil {
 				log.Fatalf("Error: Failed to create GCS bucket: %v", err)
 			} else {
-				fmt.Printf(" - %v -> %v(Created)\n", s3Bucket.Name, gcsBucketName)
+				fmt.Printf(" - %v -> %v(Created)\n", *s3Bucket.Name, gcsBucketName)
 			}
 		} else if err != nil {
 			// その他のエラー

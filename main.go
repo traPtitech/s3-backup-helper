@@ -203,6 +203,8 @@ func main() {
 						return
 					}
 
+					snappyWriter.Flush()
+
 					if err := gcsObjectWriter.Close(); err != nil {
 						errCh <- err
 						return

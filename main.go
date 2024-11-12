@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/cheggaaa/pb/v3"
 	"github.com/golang/snappy"
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/semaphore"
@@ -163,6 +164,8 @@ func main() {
 		var wg sync.WaitGroup
 		// 各オブジェクトについて、エラーを格納する
 		var errs []error
+		// プログレスバー
+		bar := pb.StartNew(len(allObjects.Contents))
 
 		// 並列処理開始
 		for _, object := range allObjects.Contents {
@@ -209,8 +212,10 @@ func main() {
 					errs = append(errs, err)
 				}
 			}()
+			bar.Increment()
 		}
 		wg.Wait()
+		bar.Finish()
 
 		// エラー数をカウント
 		totalErrors += len(errs)

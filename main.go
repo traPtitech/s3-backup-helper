@@ -133,6 +133,9 @@ func main() {
 		}
 	}
 
+	// 改行
+	fmt.Println()
+
 	// バックアップ計測用変数
 	backupStartTime := time.Now()
 	totalObjects := 0

@@ -24,7 +24,6 @@ import (
 
 // S3設定
 type s3ConfigStruct struct {
-	Bucket         string
 	Region         string
 	EndPoint       string
 	AccessKey      string
@@ -54,7 +53,6 @@ func init() {
 	s3Config.AccessKey = os.Getenv("S3_ACCESS_KEY")
 	s3Config.SecretKey = os.Getenv("S3_SECRET_KEY")
 	s3Config.ForcePathStyle = os.Getenv("S3_FORCE_PATH_STYLE") == "true"
-	s3Config.Bucket = os.Getenv("S3_BUCKET")
 	gcpCredentialsPath = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 	gcpProjectID = os.Getenv("GCP_PROJECT_ID")
 	gcsRegion = os.Getenv("GCS_REGION")

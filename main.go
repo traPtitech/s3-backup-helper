@@ -34,10 +34,14 @@ type s3ConfigStruct struct {
 var s3Config s3ConfigStruct
 
 // GCP設定
-var gcpCredentialsPath string
-var gcpProjectID string
-var gcsRegion string
-var gcsBucketNameSuffix string
+type gcpConfigStruct struct {
+	CredentialsPath  string
+	ProjectID        string
+	Region           string
+	BucketNameSuffix string
+}
+
+var gcpConfig gcpConfigStruct
 
 // Webhook設定
 var webhookId string
@@ -57,10 +61,10 @@ func init() {
 	s3Config.AccessKey = os.Getenv("S3_ACCESS_KEY")
 	s3Config.SecretKey = os.Getenv("S3_SECRET_KEY")
 	s3Config.ForcePathStyle = os.Getenv("S3_FORCE_PATH_STYLE") == "true"
-	gcpCredentialsPath = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	gcpProjectID = os.Getenv("GCP_PROJECT_ID")
-	gcsRegion = os.Getenv("GCS_REGION")
-	gcsBucketNameSuffix = os.Getenv("GCS_BUCKET_NAME_SUFFIX")
+	gcpConfig.CredentialsPath = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	gcpConfig.ProjectID = os.Getenv("GCP_PROJECT_ID")
+	gcpConfig.Region = os.Getenv("GCS_REGION")
+	gcpConfig.BucketNameSuffix = os.Getenv("GCS_BUCKET_NAME_SUFFIX")
 	webhookId = os.Getenv("WEBHOOK_ID")
 	webhookSecret = os.Getenv("WEBHOOK_SECRET")
 	palalellNum, err = strconv.ParseInt(os.Getenv("PALALELL_NUM"), 10, 64)
@@ -92,7 +96,7 @@ func main() {
 
 	// GCSクライアントの作成
 	ctx := context.Background()
-	gcsClient, err := storage.NewClient(ctx, option.WithCredentialsFile(gcpCredentialsPath))
+	gcsClient, err := storage.NewClient(ctx, option.WithCredentialsFile(gcpConfig.CredentialsPath))
 	if err != nil {
 		log.Fatalf("Error: Failed to create GCS client: %v", err)
 	}
@@ -100,7 +104,7 @@ func main() {
 	// バックアップ用GCSバケット作成
 	fmt.Println("Target buckets:")
 	for _, s3Bucket := range s3Buckets.Buckets {
-		gcsBucketName := *s3Bucket.Name + gcsBucketNameSuffix
+		gcsBucketName := *s3Bucket.Name + gcpConfig.BucketNameSuffix
 		gcsBucketClient := gcsClient.Bucket(gcsBucketName)
 		gcsBucketAttr, err := gcsBucketClient.Attrs(ctx)
 
@@ -108,7 +112,7 @@ func main() {
 		if err == storage.ErrBucketNotExist {
 			gcsNewBucketAttr := storage.BucketAttrs{
 				StorageClass:      "COLDLINE",
-				Location:          gcsRegion,
+				Location:          gcpConfig.Region,
 				VersioningEnabled: true,
 				// 90日でデータ削除
 				Lifecycle: storage.Lifecycle{Rules: []storage.LifecycleRule{
@@ -118,7 +122,7 @@ func main() {
 					},
 				}},
 			}
-			if err := gcsBucketClient.Create(ctx, gcpProjectID, &gcsNewBucketAttr); err != nil {
+			if err := gcsBucketClient.Create(ctx, gcpConfig.ProjectID, &gcsNewBucketAttr); err != nil {
 				log.Fatalf("Error: Failed to create GCS bucket: %v", err)
 			} else {
 				fmt.Printf(" - %v -> %v(Created)\n", *s3Bucket.Name, gcsBucketName)
@@ -149,7 +153,7 @@ func main() {
 
 	// バックアップ
 	for _, s3Bucket := range s3Buckets.Buckets {
-		gcsBucketName := *s3Bucket.Name + gcsBucketNameSuffix
+		gcsBucketName := *s3Bucket.Name + gcpConfig.BucketNameSuffix
 		gcsBucketClient := gcsClient.Bucket(gcsBucketName)
 
 		fmt.Printf("Bucking up objects in %v to %v: ", *s3Bucket.Name, gcsBucketName)

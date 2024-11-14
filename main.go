@@ -45,6 +45,7 @@ type gcpConfigStruct struct {
 var gcpConfig gcpConfigStruct
 
 // Webhook設定
+var webhookUrl string
 var webhookId string
 var webhookSecret string
 
@@ -67,6 +68,7 @@ func init() {
 	gcpConfig.ProjectID = os.Getenv("GCP_PROJECT_ID")
 	gcpConfig.Region = os.Getenv("GCS_REGION")
 	gcpConfig.BucketNameSuffix = os.Getenv("GCS_BUCKET_NAME_SUFFIX")
+	webhookUrl = os.Getenv("WEBHOOK_URL")
 	webhookId = os.Getenv("WEBHOOK_ID")
 	webhookSecret = os.Getenv("WEBHOOK_SECRET")
 	palalellNum, err = strconv.ParseInt(os.Getenv("PALALELL_NUM"), 10, 64)
@@ -145,76 +147,88 @@ func main() {
 	executionLimit := semaphore.NewWeighted(palalellNum)
 
 	// バックアップ
-	fmt.Printf("Bucking up objects in %v to %v: ", s3Config.Bucket, gcsBucketName)
+	fmt.Printf("Bucking up objects in %v to %v\n", s3Config.Bucket, gcsBucketName)
 
-	// オブジェクト一覧を取得し、オブジェクト数を記録
-	allObjects, err := s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+	// オブジェクトのページネーターを作成
+	objectPaginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(s3Config.Bucket),
 	})
-	if err != nil {
-		log.Fatalf("Error: Failed to list objects: %v", err)
-	}
-	fmt.Printf("%d objects\n", len(allObjects.Contents))
-	totalObjects += len(allObjects.Contents)
 
 	// 並列処理用
 	var wg sync.WaitGroup
 	// 各オブジェクトについて、エラーを格納する
 	var errs []error
-	// プログレスバー
-	bar := pb.StartNew(len(allObjects.Contents))
 
 	// 並列処理開始
-	for _, object := range allObjects.Contents {
-		wg.Add(1)
-		executionLimit.Acquire(ctx, 1)
+	for {
+		if !objectPaginator.HasMorePages() {
+			break
+		}
 
-		go func() {
-			defer executionLimit.Release(1)
-			defer wg.Done()
+		// オブジェクト取得
+		page, err := objectPaginator.NextPage(ctx)
+		if err != nil {
+			log.Fatalf("Error: Failed to list objects: %v", err)
+		}
 
-			errCh := make(chan error, 1)
+		// プログレスバー
+		bar := pb.StartNew(len(page.Contents))
+
+		for _, object := range page.Contents {
+			// 並列処理数を制限
+			wg.Add(1)
+			executionLimit.Acquire(ctx, 1)
+
+			// オブジェクト数をカウント
+			totalObjects++
+
 			go func() {
-				// GCS書き込み用オブジェクト作成
-				gcsObjectWriter := gcsBucketClient.Object(*object.Key).NewWriter(ctx)
+				defer executionLimit.Release(1)
+				defer wg.Done()
 
-				// S3オブジェクトのダウンロード
-				s3ObjectOutput, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-					Bucket: aws.String(s3Config.Bucket),
-					Key:    object.Key,
-				})
-				if err != nil {
-					errCh <- err
-					return
+				errCh := make(chan error, 1)
+				go func() {
+					// GCS書き込み用オブジェクト作成
+					gcsObjectWriter := gcsBucketClient.Object(*object.Key).NewWriter(ctx)
+
+					// S3オブジェクトのダウンロード
+					s3ObjectOutput, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+						Bucket: aws.String(s3Config.Bucket),
+						Key:    object.Key,
+					})
+					if err != nil {
+						errCh <- err
+						return
+					}
+
+					// Snappy圧縮してGCSにアップロード
+					snappyWriter := snappy.NewBufferedWriter(gcsObjectWriter)
+					defer snappyWriter.Close()
+					if _, err := io.Copy(snappyWriter, s3ObjectOutput.Body); err != nil {
+						errCh <- err
+						return
+					}
+
+					snappyWriter.Flush()
+
+					if err := gcsObjectWriter.Close(); err != nil {
+						errCh <- err
+						return
+					}
+
+					errCh <- nil
+				}()
+
+				if err := <-errCh; err != nil {
+					log.Printf("Error: Failed to backup object %v: %v", *object.Key, err)
+					errs = append(errs, err)
 				}
-
-				// Snappy圧縮してGCSにアップロード
-				snappyWriter := snappy.NewBufferedWriter(gcsObjectWriter)
-				defer snappyWriter.Close()
-				if _, err := io.Copy(snappyWriter, s3ObjectOutput.Body); err != nil {
-					errCh <- err
-					return
-				}
-
-				snappyWriter.Flush()
-
-				if err := gcsObjectWriter.Close(); err != nil {
-					errCh <- err
-					return
-				}
-
-				errCh <- nil
 			}()
-
-			if err := <-errCh; err != nil {
-				log.Printf("Error: Failed to backup object %v: %v", *object.Key, err)
-				errs = append(errs, err)
-			}
-		}()
-		bar.Increment()
+			bar.Increment()
+		}
+		bar.Finish()
+		wg.Wait()
 	}
-	wg.Wait()
-	bar.Finish()
 
 	// エラー数をカウント
 	totalErrors += len(errs)
@@ -236,5 +250,5 @@ func main() {
 	オブジェクト数: %d
 	エラー数: %d
 	`, s3Config.Bucket, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, totalErrors)
-	postWebhook(webhookMessage, webhookId, webhookSecret)
+	postWebhook(webhookMessage, webhookUrl, webhookId, webhookSecret)
 }

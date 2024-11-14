@@ -11,15 +11,15 @@ import (
 )
 
 // traQにWebhookを送信する
-func postWebhook(message string, webhookId string, webhookSecret string) error {
-	webhookUrl := "https://q.trap.jp/api/v3/webhooks/" + webhookId
+func postWebhook(message string, webhookUrl string, webhookId string, webhookSecret string) error {
+	webhookFullUrl := webhookUrl + webhookId
 
 	// Webhookの署名を生成
 	mac := hmac.New(sha1.New, []byte(webhookSecret))
 	_, _ = mac.Write([]byte(message))
 	sig := hex.EncodeToString(mac.Sum(nil))
 
-	req, err := http.NewRequest("POST", webhookUrl, strings.NewReader(message))
+	req, err := http.NewRequest("POST", webhookFullUrl, strings.NewReader(message))
 	if err != nil {
 		return err
 	}

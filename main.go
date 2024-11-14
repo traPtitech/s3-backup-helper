@@ -53,7 +53,7 @@ var palalellNum int64 = 5
 
 func init() {
 	// 環境変数の読み込み
-	err := godotenv.Load()
+	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatal("Error: Failed to load .env file")
 	}
@@ -230,10 +230,11 @@ func main() {
 
 	// Webhook送信
 	webhookMessage := fmt.Sprintf(`### オブジェクトストレージのバックアップが保存されました
+	S3バケット: %s
 	バックアップ開始時刻: %s
 	バックアップ所要時間: %f時間
 	オブジェクト数: %d
 	エラー数: %d
-	`, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, totalErrors)
+	`, s3Config.Bucket, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, totalErrors)
 	postWebhook(webhookMessage, webhookId, webhookSecret)
 }

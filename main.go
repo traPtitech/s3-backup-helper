@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"log"
@@ -52,6 +53,9 @@ var webhookSecret string
 // 並列ダウンロード数
 var palalellNum int64 = 5
 
+// フルバックアップかどうか
+var fullBackup bool = false
+
 func init() {
 	// 環境変数の読み込み
 	err := godotenv.Load(".env")
@@ -75,6 +79,7 @@ func init() {
 	if err != nil {
 		log.Fatalf("Error: Failed to convert PALALELL_NUM to int: %v", err)
 	}
+	fullBackup = os.Getenv("FULL_BACKUP") == "true"
 }
 
 func main() {
@@ -143,6 +148,7 @@ func main() {
 	// バックアップ計測用変数
 	backupStartTime := time.Now()
 	totalObjects := 0
+	skippedObjects := 0
 	totalErrors := 0
 	executionLimit := semaphore.NewWeighted(palalellNum)
 
@@ -188,9 +194,6 @@ func main() {
 
 				errCh := make(chan error, 1)
 				go func() {
-					// GCS書き込み用オブジェクト作成
-					gcsObjectWriter := gcsBucketClient.Object(*object.Key).NewWriter(ctx)
-
 					// S3オブジェクトのダウンロード
 					s3ObjectOutput, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
 						Bucket: aws.String(s3Config.Bucket),
@@ -201,6 +204,34 @@ func main() {
 						return
 					}
 
+					// フルバックアップでない場合、GCSオブジェクトとハッシュを比較
+					if !fullBackup {
+						// GCSオブジェクトの存在判定、情報取得
+						gcsObjectAttrs, err := gcsBucketClient.Object(*object.Key).Attrs(ctx)
+						// オブジェクトが存在する場合、ハッシュを比較
+						if err == nil {
+							s3Hash := md5.New()
+
+							// ハッシュ計算
+							hashWriter := snappy.NewBufferedWriter(s3Hash)
+							defer hashWriter.Close()
+							if _, err := io.Copy(hashWriter, s3ObjectOutput.Body); err != nil {
+								errCh <- err
+								return
+							}
+							hashWriter.Flush()
+
+							// ハッシュを比較し、同じだったらスキップ
+							if fmt.Sprintf("%x", gcsObjectAttrs.MD5) == fmt.Sprintf("%x", s3Hash.Sum(nil)) {
+								skippedObjects++
+								errCh <- nil
+								return
+							}
+						}
+					}
+
+					// GCS書き込み用オブジェクト作成
+					gcsObjectWriter := gcsBucketClient.Object(*object.Key).NewWriter(ctx)
 					// Snappy圧縮してGCSにアップロード
 					snappyWriter := snappy.NewBufferedWriter(gcsObjectWriter)
 					defer snappyWriter.Close()
@@ -232,15 +263,12 @@ func main() {
 
 	// エラー数をカウント
 	totalErrors += len(errs)
-	if len(errs) > 0 {
-		fmt.Printf("Error: %d objects failed to backup\n", len(errs))
-	}
 
 	// バックアップ終了
 	backupEndTime := time.Now()
 	backupDuration := backupEndTime.Sub(backupStartTime)
 
-	fmt.Printf("Backup completed: %d objects, %d errors, %v\n", totalObjects, totalErrors, backupDuration)
+	fmt.Printf("Backup completed: %d objects, %d skipped, %d errors, %v\n", totalObjects, skippedObjects, totalErrors, backupDuration)
 
 	// Webhook送信
 	webhookMessage := fmt.Sprintf(`### オブジェクトストレージのバックアップが保存されました
@@ -248,7 +276,8 @@ func main() {
 	バックアップ開始時刻: %s
 	バックアップ所要時間: %f時間
 	オブジェクト数: %d
+	スキップされたオブジェクト数: %d
 	エラー数: %d
-	`, s3Config.Bucket, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, totalErrors)
+	`, s3Config.Bucket, backupStartTime.Format("2006/01/02 15:04:05"), backupDuration.Hours(), totalObjects, skippedObjects, totalErrors)
 	postWebhook(webhookMessage, webhookUrl, webhookId, webhookSecret)
 }

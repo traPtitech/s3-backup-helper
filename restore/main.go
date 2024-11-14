@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	//	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -43,15 +43,15 @@ type gcpConfigStruct struct {
 var gcpConfig gcpConfigStruct
 
 // DB設定
-type dbConfigStruct struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	database string
-}
-
-var dbConfig dbConfigStruct
+//type dbConfigStruct struct {
+//	Host     string
+//	Port     string
+//	User     string
+//	Password string
+//	database string
+//}
+//
+//var dbConfig dbConfigStruct
 
 func init() {
 	err := godotenv.Load("restore/.env")
@@ -72,11 +72,11 @@ func init() {
 	gcpConfig.Region = os.Getenv("GCS_REGION")
 	gcpConfig.Bucket = os.Getenv("GCS_BUCKET")
 
-	dbConfig.Host = os.Getenv("MYSQL_HOST")
-	dbConfig.Port = os.Getenv("MYSQL_PORT")
-	dbConfig.User = os.Getenv("MYSQL_USER")
-	dbConfig.Password = os.Getenv("MYSQL_PASSWORD")
-	dbConfig.database = os.Getenv("MYSQL_DATABASE")
+	//	dbConfig.Host = os.Getenv("MYSQL_HOST")
+	//	dbConfig.Port = os.Getenv("MYSQL_PORT")
+	//	dbConfig.User = os.Getenv("MYSQL_USER")
+	//	dbConfig.Password = os.Getenv("MYSQL_PASSWORD")
+	//	dbConfig.database = os.Getenv("MYSQL_DATABASE")
 
 }
 
@@ -104,14 +104,14 @@ func main() {
 	defer gcsClient.Close()
 
 	// DB接続
-	db, err := sql.Open("mysql", dbConfig.User+":"+dbConfig.Password+"@tcp("+dbConfig.Host+":"+dbConfig.Port+")/"+dbConfig.database)
-	if err != nil {
-		log.Fatalf("Error: Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-	if err = db.Ping(); err != nil {
-		log.Fatalf("Error: Failed to ping database: %v", err)
-	}
+	//db, err := sql.Open("mysql", dbConfig.User+":"+dbConfig.Password+"@tcp("+dbConfig.Host+":"+dbConfig.Port+")/"+dbConfig.database)
+	//if err != nil {
+	//	log.Fatalf("Error: Failed to connect to database: %v", err)
+	//}
+	//defer db.Close()
+	//if err = db.Ping(); err != nil {
+	//	log.Fatalf("Error: Failed to ping database: %v", err)
+	//}
 
 	// GCSバケットの取得、存在判定
 	gcsBucket := gcsClient.Bucket(gcpConfig.Bucket)
@@ -174,24 +174,24 @@ func main() {
 		}
 
 		// ファイルのデータをDBから取得
-		var fileName string
-		var fileMime string
-
-		if err := db.QueryRow("SELECT name,mime FROM files WHERE id=?", object.Name).Scan(&fileName, &fileMime); err != nil {
-			log.Printf("Error: Failed to get file data: %v", err)
-			totalError++
-			continue
-		}
+		//var fileName string
+		//var fileMime string
+		//
+		//if err := db.QueryRow("SELECT name,mime FROM files WHERE id=?", object.Name).Scan(&fileName, &fileMime); err != nil {
+		//	log.Printf("Error: Failed to get file data: %v", err)
+		//	totalError++
+		//	continue
+		//}
 
 		// snappy解凍してS3にアップロード
 		snappyReader := snappy.NewReader(gcsObjectReader)
 		s3Uploader := manager.NewUploader(s3Client)
 		_, err = s3Uploader.Upload(ctx, &s3.PutObjectInput{
-			Bucket:             aws.String(s3Config.Bucket),
-			Key:                aws.String(object.Name),
-			Body:               snappyReader,
-			ContentType:        aws.String(fileMime),
-			ContentDisposition: aws.String(fmt.Sprintf("attachment; filename*=UTF-8''%s", fileName)),
+			Bucket: aws.String(s3Config.Bucket),
+			Key:    aws.String(object.Name),
+			Body:   snappyReader,
+			//ContentType:        aws.String(fileMime),
+			//ContentDisposition: aws.String(fmt.Sprintf("attachment; filename*=UTF-8''%s", fileName)),
 		})
 		if err != nil {
 			log.Printf("Error: Failed to put object: %v", err)

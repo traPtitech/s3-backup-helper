@@ -13,8 +13,7 @@
  ```go
  go run restore/main.go
  ```
- `GCS_BUCKET`から`S3_BUCKET`に復元されます。  
- メタデータを修復するため、DBに接続する必要があります。
+ `GCS_BUCKET`から`S3_BUCKET`に復元されます。
 
 ## 単一ファイル復元
 

@@ -112,7 +112,7 @@ func main() {
 	// バケットが存在しない場合は作成
 	if err == storage.ErrBucketNotExist {
 		gcsNewBucketAttr := storage.BucketAttrs{
-			StorageClass:      "COLDLINE",
+			StorageClass:      "STANDARD",
 			Location:          gcpConfig.Region,
 			VersioningEnabled: true,
 			// 90日でデータ削除
@@ -133,7 +133,7 @@ func main() {
 		log.Fatalf("Error: Failed to get GCS bucket attributes: %v", err)
 	} else {
 		// 既に存在している場合、バケットの状態を確認
-		if gcsBucketAttr.StorageClass != "COLDLINE" {
+		if gcsBucketAttr.StorageClass != "STANDARD" {
 			log.Fatalf("Error: Bucket storage class is not COLDLINE: %v", gcsBucketAttr.StorageClass)
 		}
 		if !gcsBucketAttr.VersioningEnabled {
@@ -232,6 +232,30 @@ func main() {
 
 					// GCS書き込み用オブジェクト作成
 					gcsObjectWriter := gcsBucketClient.Object(*object.Key).NewWriter(ctx)
+
+					// メタデータ書き込み
+					if s3ObjectOutput.ContentType != nil {
+						gcsObjectWriter.ContentType = *s3ObjectOutput.ContentType
+						fmt.Println(*s3ObjectOutput.ContentType)
+					}
+					if s3ObjectOutput.ContentEncoding != nil {
+						gcsObjectWriter.ContentEncoding = *s3ObjectOutput.ContentEncoding
+					}
+					if s3ObjectOutput.ContentDisposition != nil {
+						gcsObjectWriter.ContentDisposition = *s3ObjectOutput.ContentDisposition
+					}
+					if s3ObjectOutput.ContentLanguage != nil {
+						gcsObjectWriter.ContentLanguage = *s3ObjectOutput.ContentLanguage
+					}
+					if s3ObjectOutput.CacheControl != nil {
+						gcsObjectWriter.CacheControl = *s3ObjectOutput.CacheControl
+					}
+					if s3ObjectOutput.Metadata != nil {
+						for key, value := range s3ObjectOutput.Metadata {
+							gcsObjectWriter.Metadata[key] = value
+						}
+					}
+
 					// Snappy圧縮してGCSにアップロード
 					snappyWriter := snappy.NewBufferedWriter(gcsObjectWriter)
 					defer snappyWriter.Close()

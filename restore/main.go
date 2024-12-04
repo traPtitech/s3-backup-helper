@@ -42,17 +42,6 @@ type gcpConfigStruct struct {
 
 var gcpConfig gcpConfigStruct
 
-// DB設定
-//type dbConfigStruct struct {
-//	Host     string
-//	Port     string
-//	User     string
-//	Password string
-//	database string
-//}
-//
-//var dbConfig dbConfigStruct
-
 func init() {
 	err := godotenv.Load("restore/.env")
 	if err != nil {
@@ -71,13 +60,6 @@ func init() {
 	gcpConfig.ProjectID = os.Getenv("GCP_PROJECT_ID")
 	gcpConfig.Region = os.Getenv("GCS_REGION")
 	gcpConfig.Bucket = os.Getenv("GCS_BUCKET")
-
-	//	dbConfig.Host = os.Getenv("MYSQL_HOST")
-	//	dbConfig.Port = os.Getenv("MYSQL_PORT")
-	//	dbConfig.User = os.Getenv("MYSQL_USER")
-	//	dbConfig.Password = os.Getenv("MYSQL_PASSWORD")
-	//	dbConfig.database = os.Getenv("MYSQL_DATABASE")
-
 }
 
 func main() {
@@ -102,16 +84,6 @@ func main() {
 		log.Fatalf("Error: Failed to create GCS client: %v", err)
 	}
 	defer gcsClient.Close()
-
-	// DB接続
-	//db, err := sql.Open("mysql", dbConfig.User+":"+dbConfig.Password+"@tcp("+dbConfig.Host+":"+dbConfig.Port+")/"+dbConfig.database)
-	//if err != nil {
-	//	log.Fatalf("Error: Failed to connect to database: %v", err)
-	//}
-	//defer db.Close()
-	//if err = db.Ping(); err != nil {
-	//	log.Fatalf("Error: Failed to ping database: %v", err)
-	//}
 
 	// GCSバケットの取得、存在判定
 	gcsBucket := gcsClient.Bucket(gcpConfig.Bucket)
@@ -166,6 +138,12 @@ func main() {
 		}
 		totalObjects++
 		fmt.Printf(" - %s\n", object.Name)
+		gcsObjectAttrs, err := gcsBucket.Object(object.Name).Attrs(ctx)
+		if err != nil {
+			log.Printf("Error: Failed to get object attributes: %v", err)
+			totalError++
+			continue
+		}
 		gcsObjectReader, err := gcsBucket.Object(object.Name).NewReader(ctx)
 		if err != nil {
 			log.Printf("Error: Failed to get object reader: %v", err)
@@ -173,26 +151,41 @@ func main() {
 			continue
 		}
 
-		// ファイルのデータをDBから取得
-		//var fileName string
-		//var fileMime string
-		//
-		//if err := db.QueryRow("SELECT name,mime FROM files WHERE id=?", object.Name).Scan(&fileName, &fileMime); err != nil {
-		//	log.Printf("Error: Failed to get file data: %v", err)
-		//	totalError++
-		//	continue
-		//}
+		// メタデータの配列を作成
+		metadataList := make(map[string]string, 0)
+		for key, value := range gcsObjectAttrs.Metadata {
+			metadataList[key] = value
+		}
 
 		// snappy解凍してS3にアップロード
+		// オブジェクトのデータを作成
+		var s3ObjectData s3.PutObjectInput
+		s3ObjectData.Bucket = aws.String(s3Config.Bucket)
+		s3ObjectData.Key = aws.String(object.Name)
 		snappyReader := snappy.NewReader(gcsObjectReader)
+		s3ObjectData.Body = snappyReader
+		if gcsObjectAttrs.ContentType != "" {
+			s3ObjectData.ContentType = aws.String(gcsObjectAttrs.ContentType)
+		}
+		if gcsObjectAttrs.ContentDisposition != "" {
+			s3ObjectData.ContentDisposition = aws.String(gcsObjectAttrs.ContentDisposition)
+		}
+		if gcsObjectAttrs.ContentEncoding != "" {
+			s3ObjectData.ContentEncoding = aws.String(gcsObjectAttrs.ContentEncoding)
+		}
+		if gcsObjectAttrs.ContentLanguage != "" {
+			s3ObjectData.ContentLanguage = aws.String(gcsObjectAttrs.ContentLanguage)
+		}
+		if gcsObjectAttrs.CacheControl != "" {
+			s3ObjectData.CacheControl = aws.String(gcsObjectAttrs.CacheControl)
+		}
+		if len(metadataList) > 0 {
+			s3ObjectData.Metadata = metadataList
+		}
+
+		// アップロード
 		s3Uploader := manager.NewUploader(s3Client)
-		_, err = s3Uploader.Upload(ctx, &s3.PutObjectInput{
-			Bucket: aws.String(s3Config.Bucket),
-			Key:    aws.String(object.Name),
-			Body:   snappyReader,
-			//ContentType:        aws.String(fileMime),
-			//ContentDisposition: aws.String(fmt.Sprintf("attachment; filename*=UTF-8''%s", fileName)),
-		})
+		_, err = s3Uploader.Upload(ctx, &s3ObjectData)
 		if err != nil {
 			log.Printf("Error: Failed to put object: %v", err)
 			totalError++

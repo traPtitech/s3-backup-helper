@@ -236,7 +236,6 @@ func main() {
 					// メタデータ書き込み
 					if s3ObjectOutput.ContentType != nil {
 						gcsObjectWriter.ContentType = *s3ObjectOutput.ContentType
-						fmt.Println(*s3ObjectOutput.ContentType)
 					}
 					if s3ObjectOutput.ContentEncoding != nil {
 						gcsObjectWriter.ContentEncoding = *s3ObjectOutput.ContentEncoding

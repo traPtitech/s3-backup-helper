@@ -112,7 +112,7 @@ func main() {
 	// バケットが存在しない場合は作成
 	if err == storage.ErrBucketNotExist {
 		gcsNewBucketAttr := storage.BucketAttrs{
-			StorageClass:      "STANDARD",
+			StorageClass:      "COLDLINE",
 			Location:          gcpConfig.Region,
 			VersioningEnabled: true,
 			// 90日でデータ削除
@@ -133,7 +133,7 @@ func main() {
 		log.Fatalf("Error: Failed to get GCS bucket attributes: %v", err)
 	} else {
 		// 既に存在している場合、バケットの状態を確認
-		if gcsBucketAttr.StorageClass != "STANDARD" {
+		if gcsBucketAttr.StorageClass != "COLDLINE" {
 			log.Fatalf("Error: Bucket storage class is not COLDLINE: %v", gcsBucketAttr.StorageClass)
 		}
 		if !gcsBucketAttr.VersioningEnabled {
@@ -236,7 +236,6 @@ func main() {
 					// メタデータ書き込み
 					if s3ObjectOutput.ContentType != nil {
 						gcsObjectWriter.ContentType = *s3ObjectOutput.ContentType
-						fmt.Println(*s3ObjectOutput.ContentType)
 					}
 					if s3ObjectOutput.ContentEncoding != nil {
 						gcsObjectWriter.ContentEncoding = *s3ObjectOutput.ContentEncoding

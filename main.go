@@ -250,6 +250,9 @@ func main() {
 						gcsObjectWriter.CacheControl = *s3ObjectOutput.CacheControl
 					}
 					if s3ObjectOutput.Metadata != nil {
+						if gcsObjectWriter.Metadata == nil {
+							gcsObjectWriter.Metadata = make(map[string]string)
+						}
 						for key, value := range s3ObjectOutput.Metadata {
 							gcsObjectWriter.Metadata[key] = value
 						}
